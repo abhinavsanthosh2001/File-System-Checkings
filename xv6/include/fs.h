@@ -4,6 +4,13 @@
 // On-disk file system format.
 // Both the kernel and user programs use this header file.
 
+
+#define T_DIR 1
+#define T_FILE 2
+#define T_DEV 3
+
+
+
 // Block 0 is unused.
 // Block 1 is super block.
 // Inodes start at block 2.
