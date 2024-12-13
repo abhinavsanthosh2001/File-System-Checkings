@@ -49,93 +49,61 @@ void check_block_addresses(struct dinode *dip, int ninodes, int nblocks) {
   // printf("check_block_addresses OK!\n");
 }
 
-void check_root_directory(struct dinode *dip, struct dirent *root_dir) {
-  // Check if the root inode (inode 1) is a directory
-  if (dip[ROOTINO].type != T_DIR) {
-    fprintf(stderr, "ERROR: root directory does not exist.\n");
-    exit(1);
-  }
-
-  // Check if the root inode number is 1
-  if (ROOTINO != 1) {
-    fprintf(stderr, "ERROR: root directory does not exist.\n");
-    exit(1);
-  }
-
-  // Check if the root directory's parent is itself
-  if (root_dir[1].inum != ROOTINO) {
-    fprintf(stderr, "ERROR: root directory does not exist.\n");
-    exit(1);
-  }
-
-  // printf("check_root_directory OK!\n");
+void check_root_directory(struct dinode *dip, struct dirent *de) {
+    int pfound = 0;
+    int j;
+    for ( j = 0; j < DPB; j++, de++) {
+        if (strcmp("..", de->name) == 0) {
+            pfound = 1;
+            if (de->inum != ROOTINO) {
+                fprintf(stderr, "ERROR: root directory does not exist.\n");
+                exit(1);
+            }
+            break;
+        }
+    }
+    if (!pfound) {
+        fprintf(stderr, "ERROR: root directory does not exist.\n");
+        exit(1);
+    }
 }
 
-void check_directory_format(struct dinode *dip, int ninodes, char *fs_img) {
-  int i, j, k;
-  for (i = 0; i < ninodes; i++) {
-    if (dip[i].type != T_DIR) {
-      continue; // Skip non-directory inodes
-    }
+void check_directory_format(struct dinode *dip, int ninodes, char *addr) {
+    int i,j,inum;
+    for ( inum = 1; inum < ninodes; inum++) {
+        struct dinode *inode = &dip[inum];
+        if (inode->type != T_DIR) continue;
 
-    int found_dot = 0, found_dotdot = 0;
-    uint block_num;
+        int pfound = 0, cfound = 0;
+        for ( i = 0; i < NDIRECT; i++) {
+            uint blockaddr = inode->addrs[i];
+            if (blockaddr == 0) continue;
 
-    // Iterate through direct blocks
-    for (j = 0; j < NDIRECT && j < dip[i].size / BLOCK_SIZE; j++) {
-      block_num = dip[i].addrs[j];
-      if (block_num == 0) continue;
-
-      struct dirent *dir = (struct dirent *)(fs_img + block_num * BLOCK_SIZE);
-      int entries_in_block = BLOCK_SIZE / sizeof(struct dirent);
-
-      for ( k = 0; k < entries_in_block; k++) {
-        if (dir[k].inum == 0) continue; // Skip empty entries
-
-        if (strcmp(dir[k].name, ".") == 0 && dir[k].inum == i) {
-          found_dot = 1;
-        } else if (strcmp(dir[k].name, "..") == 0) {
-          found_dotdot = 1;
+            struct dirent *de = (struct dirent *)(addr + blockaddr * BLOCK_SIZE);
+            for ( j = 0; j < DPB; j++, de++) {
+                if (!cfound && strcmp(".", de->name) == 0) {
+                    cfound = 1;
+                    if (de->inum != inum) {
+                        fprintf(stderr, "ERROR: directory not properly formatted.\n");
+                        exit(1);
+                    }
+                }
+                if (!pfound && strcmp("..", de->name) == 0) {
+                    pfound = 1;
+                    if ((inum != ROOTINO && de->inum == inum) || (inum == ROOTINO && de->inum != inum)) {
+                        fprintf(stderr, "ERROR: root directory does not exist.\n");
+                        exit(1);
+                    }
+                }
+                if (pfound && cfound) break;
+            }
+            if (pfound && cfound) break;
         }
-
-        if (found_dot && found_dotdot) break;
-      }
-
-      if (found_dot && found_dotdot) break;
-    }
-
-    // Check indirect block if necessary and not found yet
-    if ((!found_dot || !found_dotdot) && dip[i].addrs[NDIRECT] != 0) {
-      uint *indirect = (uint *)(fs_img + dip[i].addrs[NDIRECT] * BLOCK_SIZE);
-      for (j = 0; j < NINDIRECT && j < (dip[i].size - NDIRECT*BLOCK_SIZE) / BLOCK_SIZE; j++) {
-        block_num = indirect[j];
-        if (block_num == 0) continue;
-
-        struct dirent *dir = (struct dirent *)(fs_img + block_num * BLOCK_SIZE);
-        int entries_in_block = BLOCK_SIZE / sizeof(struct dirent);
-
-        for ( k = 0; k < entries_in_block; k++) {
-          if (dir[k].inum == 0) continue; // Skip empty entries
-
-          if (strcmp(dir[k].name, ".") == 0 && dir[k].inum == i) {
-            found_dot = 1;
-          } else if (strcmp(dir[k].name, "..") == 0) {
-            found_dotdot = 1;
-          }
-
-          if (found_dot && found_dotdot) break;
+        if (!pfound || !cfound) {
+            fprintf(stderr, "ERROR: directory not properly formatted.\n");
+            exit(1);
         }
-
-        if (found_dot && found_dotdot) break;
-      }
     }
-
-    if (!found_dot || !found_dotdot) {
-      fprintf(stderr, "ERROR: directory not properly formatted.\n");
-      exit(1);
-    }
-  }
-  // printf("check_directory_format OK!\n");
 }
 
 void check_block_usage_in_bitmap(struct dinode *dip, char *bitmap, int ninodes, int nblocks, char *fs_img) {
