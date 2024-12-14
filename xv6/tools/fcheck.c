@@ -8,7 +8,6 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <stdbool.h>
-
 #include "types.h"
 #include "fs.h"
 
@@ -22,7 +21,6 @@ void check_inode_types(struct dinode *dip, int ninodes) {
         exit(1);
     }
   }
-  // printf("inode type check OK!\n");
 }
 
 void check_block_addresses(struct dinode *dip, int ninodes, int nblocks, char *addr) {
@@ -158,7 +156,6 @@ void check_block_usage_in_bitmap(struct dinode *dip, char *bitmap, int ninodes, 
       }
     }
   }
-  // printf("check_block_usage_in_bitmap OK!\n");
 }
 
 void check_bitmap_consistency_with_inodes(struct dinode *dip, char *bitmap, int ninodes, int nblocks, void *img_ptr) {
@@ -175,8 +172,8 @@ void check_bitmap_consistency_with_inodes(struct dinode *dip, char *bitmap, int 
         for (j = 0; j < NDIRECT; j++) {
             if (dip[i].addrs[j] != 0) {
                 if (!is_block_in_use(dip[i].addrs[j], bitmap)) {
-                    printf("ERROR: bitmap marks block in use but it is not in use.\n");
-                    return;
+                    fprintf(stderr, "ERROR: bitmap marks block in use but it is not in use.\n");
+                    exit(1);
                 }
             }
         }
@@ -187,14 +184,13 @@ void check_bitmap_consistency_with_inodes(struct dinode *dip, char *bitmap, int 
             for (k = 0; k < NINDIRECT; k++) {
                 if (indirect[k] != 0) {
                     if (!is_block_in_use(indirect[k], bitmap)) {
-                        printf("ERROR: bitmap marks block in use but it is not in use.\n");
-                        return;
+                        fprintf(stderr, "ERROR: bitmap marks block in use but it is not in use.\n");
+                        exit(1);
                     }
                 }
             }
         }
     }
-    // printf("check_bitmap_consistency_with_inodes OK!\n");
 
 
 }
@@ -257,162 +253,6 @@ void check_indirect_address_uniqueness(struct dinode *dip, int ninodes, int nblo
         }
     }
 }
-
-// void check_inode_referred_in_directory(struct dinode *dip, int ninodes, int nblocks, char *addr) {
-//     bool inode_found;
-//     struct dirent *de;
-//     int i, j, n, inode_num;
-
-//     // Iterate through inodes
-//     for ( inode_num = 1; inode_num < ninodes; inode_num++) {
-//         if (dip[inode_num].type == 0) {
-//             continue; // Skip unallocated inodes
-//         }
-
-//         inode_found = false;
-
-//         // Check all directories for references to the inode
-//         for (i = 0; i < ninodes; i++) {
-//             if (dip[i].type == T_DIR) { // Check only directories
-//                 // Read the directory entries
-//                 de = (struct dirent *)(addr + dip[i].addrs[0] * BLOCK_SIZE);
-//                 n = dip[i].size / sizeof(struct dirent);
-
-//                 for ( j = 0; j < n; j++, de++) {
-//                     if (de->inum == inode_num) {
-//                         inode_found = true;
-//                         break;
-//                     }
-//                 }
-//                 if (inode_found) {
-//                     break;
-//                 }
-//             }
-//         }
-
-//         // If inode is not found in any directory, report error
-//         if (!inode_found) {
-//             fprintf(stderr, "ERROR: inode marked use but not found in a directory.\n");
-//             exit(1);
-//     }
-//   }
-//     // printf("check_inode_referred_in_directory OK!\n");
-
-// }
-
-// void check_inode_referred_in_directory_marked_in_use(struct dinode *dip, int ninodes, int nblocks, char *addr) {
-//     struct dirent *de;
-//     int i, j, n, inode_num;
-
-//     // Iterate through directories to check inode references
-//     for ( inode_num = 1; inode_num < ninodes; inode_num++) {
-//         if (dip[inode_num].type == 0) {
-//             continue; // Skip unallocated inodes
-//         }
-
-//         // Check all directories for references to the inode
-//         for (i = 0; i < ninodes; i++) {
-//             if (dip[i].type == T_DIR) { // Check only directories
-//                 // Read the directory entries
-//                 de = (struct dirent *)(addr + dip[i].addrs[0] * BLOCK_SIZE);
-//                 n = dip[i].size / sizeof(struct dirent);
-
-//                 for ( j = 0; j < n; j++, de++) {
-//                     if (de->inum == inode_num) {
-//                         // If the inode is referred to but is not in use, report error
-//                         if (dip[inode_num].type == 0) {
-//                             fprintf(stderr, "ERROR: inode referred to in directory but marked free.\n");
-//                             exit(1);
-//                         }
-//                     }
-//                 }
-//             }
-//     }
-//   }
-//     // printf("check_inode_referred_in_directory_marked_in_use OK!\n");
-
-// }
-
-// void check_reference_count_for_files(struct dinode *dip, int ninodes, int nblocks, char *addr) {
-//     struct dirent *de;
-//     int i, j, n, inode_num;
-
-//     // Iterate through all inodes
-//     for (inode_num = 1; inode_num < ninodes; inode_num++) {
-//         if (dip[inode_num].type == T_FILE) { // Only check regular files
-//             int link_count = 0; // Variable to count directory references for the file
-
-//             // Check all directories for references to the inode
-//             for (i = 0; i < ninodes; i++) {
-//                 if (dip[i].type == T_DIR) { // Check only directories
-//                     // Read the directory entries
-//                     de = (struct dirent *)(addr + dip[i].addrs[0] * BLOCK_SIZE);
-//                     n = dip[i].size / sizeof(struct dirent);
-
-//                     // Count how many times the inode is referred to in directories
-//                     for ( j = 0; j < n; j++, de++) {
-//                         if (de->inum == inode_num) {
-//                             link_count++;
-//                         }
-//                     }
-//                 }
-//             }
-
-//             // Check if the link count matches the inode's link count
-//             if (link_count != dip[inode_num].nlink) {
-//                 fprintf(stderr, "ERROR: bad reference count for file.\n");
-//                 exit(1);
-//             }
-//   }
-//  }
-//     //  printf("check_reference_count_for_files OK!\n");
-
-// }
-
-// void check_directory_links(struct dinode *dip, int ninodes, int nblocks, char *addr) {
-//     struct dirent *de;
-//     int i, j, n, inode_num;
-//     int *directory_in_use = calloc(ninodes, sizeof(int)); // Use calloc to initialize to zero
-//     if (!directory_in_use) {
-//         fprintf(stderr, "Memory allocation failed\n");
-//         exit(1);
-//     }
-
-//     // First pass: count external references to directories
-//     for (i = 0; i < ninodes; i++) {
-//         if (dip[i].type == T_DIR) {
-//             de = (struct dirent *)(addr + dip[i].addrs[0] * BLOCK_SIZE);
-//             n = dip[i].size / sizeof(struct dirent);
-
-//             for (j = 0; j < n; j++, de++) {
-//                 if (de->inum != 0 && strcmp(de->name, ".") != 0 && strcmp(de->name, "..") != 0) {
-//                     if (dip[de->inum].type == T_DIR) {
-//                         directory_in_use[de->inum]++;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-
-//     // Second pass: check for multiple references
-//     for (inode_num = 1; inode_num < ninodes; inode_num++) {
-//         if (dip[inode_num].type == T_DIR && inode_num != ROOTINO) {
-//             if (directory_in_use[inode_num] > 1) {
-//                 fprintf(stderr, "ERROR: directory appears more than once in file system.\n");
-//                 free(directory_in_use);
-//                 exit(1);
-//             }
-//             if (directory_in_use[inode_num] == 0) {
-//                 fprintf(stderr, "ERROR: directory appears more than once in file system.\n");
-//                 free(directory_in_use);
-//                 exit(1);
-//             }
-//         }
-//     }
-
-//     free(directory_in_use);
-//     // printf("check_directory_links OK!\n");
-// }
 
 void traverse_dirs(char *addr, struct dinode *rootinode, int *inodemap, struct dinode *dip) {
     int i, j;
@@ -514,7 +354,7 @@ main(int argc, char *argv[])
   struct dirent *de;
 
   if(argc < 2){
-    fprintf(stderr, "Usage: sample fs.img ...\n");
+    fprintf(stderr, "image not found.\n");
     exit(1);
   }
 
@@ -533,18 +373,8 @@ main(int argc, char *argv[])
   }
   /* read the super block */
   sb = (struct superblock *) (addr + 1 * BLOCK_SIZE);
-//   printf("fs size %d, no. of blocks %d, no. of inodes %d \n", sb->size, sb->nblocks, sb->ninodes);
-
-  /* read the inodes */
   dip = (struct dinode *) (addr + IBLOCK((uint)0)*BLOCK_SIZE); 
-//   printf("begin addr %p, begin inode %p , offset %d \n", addr, dip, (char *)dip -addr);
-
-//   // read root inode
-//   printf("Root inode  size %d links %d type %d \n", dip[ROOTINO].size, dip[ROOTINO].nlink, dip[ROOTINO].type);
-
   de = (struct dirent *) (addr + (dip[ROOTINO].addrs[0])*BLOCK_SIZE);
-
-
   n = dip[ROOTINO].size/sizeof(struct dirent);
 
 
@@ -556,12 +386,7 @@ main(int argc, char *argv[])
   check_bitmap_consistency_with_inodes(dip, addr + BBLOCK(0, sb->ninodes) * BLOCK_SIZE, sb->ninodes, sb->nblocks, addr);
   check_direct_address_uniqueness(dip, sb->ninodes, sb->nblocks,addr);
   check_indirect_address_uniqueness(dip, sb->ninodes, sb->nblocks, addr);
-//   check_inode_referred_in_directory(dip, sb->ninodes, sb->nblocks, addr);
-//   check_inode_referred_in_directory_marked_in_use(dip, sb->ninodes, sb->nblocks, addr);
-//   check_reference_count_for_files(dip, sb->ninodes, sb->nblocks, addr);
-//   check_directory_links(dip, sb->ninodes, sb->nblocks, addr);
   directory_check(dip, sb->ninodes, sb->nblocks, addr);
-
   exit(0);
 
 }
