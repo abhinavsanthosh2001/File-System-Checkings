@@ -192,59 +192,57 @@ int is_block_in_use(uint block, char *bitmap) {
     return (bitmap[block_index] & (1 << block_offset)) != 0;
 }
 
-void check_direct_address_uniqueness(struct dinode *dip, int ninodes, int nblocks) {
-    // Array to track the usage count of each block
-    int block_usage_count[nblocks], i, j;
-    memset(block_usage_count, 0, sizeof(block_usage_count));
+void check_direct_address_uniqueness(struct dinode *dip, int ninodes, int nblocks, char *addr) {
+    uint duaddrs[nblocks];
+    memset(duaddrs, 0, sizeof(uint) * nblocks);
+    int i,inum;
 
-    // Iterate through inodes and count usage of direct addresses
-    for ( i = 0; i < ninodes; i++) {
-        if (dip[i].type == 0) {
-            continue; // Skip unallocated inodes
+
+    for ( inum = 1; inum < ninodes; inum++) {
+        struct dinode *inode = &dip[inum];
+        if (inode->type == 0) continue;
+
+        for ( i = 0; i < NDIRECT; i++) {
+            uint blockaddr = inode->addrs[i];
+            if (blockaddr == 0) continue;
+            duaddrs[blockaddr]++;
         }
-
-        for ( j = 0; j < NDIRECT; j++) {
-            if (dip[i].addrs[j] != 0) {
-                int block_num = dip[i].addrs[j];
-                if (block_num > 0 && block_num < nblocks) {
-                    block_usage_count[block_num]++;
-                    if (block_usage_count[block_num] > 1) {
-                        fprintf(stderr, "ERROR: direct address used more than once.\n");
-                        exit(1);
-                    }
-                }
-            }
     }
-  }
-    // printf("check_direct_address_uniqueness OK!\n");
 
+    for ( i = 0; i < nblocks; i++) {
+        if (duaddrs[i] > 1) {
+            fprintf(stderr, "ERROR: direct address used more than once.\n");
+            exit(1);
+        }
+    }
 }
 
-void check_indirect_address_uniqueness(struct dinode *dip, int ninodes, int nblocks) {
-    // Array to track the usage count of each indirect block
-    int block_usage_count[nblocks], i;
-    memset(block_usage_count, 0, sizeof(block_usage_count));
+void check_indirect_address_uniqueness(struct dinode *dip, int ninodes, int nblocks, char *addr) {
+    uint iuaddrs[nblocks];
+    memset(iuaddrs, 0, sizeof(uint) * nblocks);
+    int i,inum;
 
-    // Iterate through inodes and count usage of indirect addresses
-    for ( i = 0; i < ninodes; i++) {
-        if (dip[i].type == 0) {
-            continue; // Skip unallocated inodes
+    for ( inum = 1; inum < ninodes; inum++) {
+        struct dinode *inode = &dip[inum];
+        if (inode->type == 0) continue;
+
+        uint blockaddr = inode->addrs[NDIRECT];
+        if (blockaddr == 0) continue;
+
+        uint *indirect = (uint *)(addr + blockaddr * BLOCK_SIZE);
+        for ( i = 0; i < NINDIRECT; i++) {
+            blockaddr = indirect[i];
+            if (blockaddr == 0) continue;
+            iuaddrs[blockaddr]++;
         }
+    }
 
-        // Check the indirect address (if it exists)
-        if (dip[i].addrs[NDIRECT] != 0) {
-            int block_num = dip[i].addrs[NDIRECT];
-            if (block_num > 0 && block_num < nblocks) {
-                block_usage_count[block_num]++;
-                if (block_usage_count[block_num] > 1) {
-                    fprintf(stderr, "ERROR: indirect address used more than once.\n");
-                    exit(1);
-                }
-            }
-  }
-  }
-    // printf("check_indirect_address_uniqueness OK!\n");
-
+    for ( i = 0; i < nblocks; i++) {
+        if (iuaddrs[i] > 1) {
+            fprintf(stderr, "ERROR: indirect address used more than once.\n");
+            exit(1);
+        }
+    }
 }
 
 void check_inode_referred_in_directory(struct dinode *dip, int ninodes, int nblocks, char *addr) {
@@ -460,8 +458,8 @@ main(int argc, char *argv[])
   check_directory_format(dip, sb->ninodes, addr);
   check_block_usage_in_bitmap(dip, addr + BBLOCK(0, sb->ninodes) * BLOCK_SIZE, sb->ninodes, sb->nblocks, addr);
   check_bitmap_consistency_with_inodes(dip, addr + BBLOCK(0, sb->ninodes) * BLOCK_SIZE, sb->ninodes, sb->nblocks, addr);
-  check_direct_address_uniqueness(dip, sb->ninodes, sb->nblocks);
-  check_indirect_address_uniqueness(dip, sb->ninodes, sb->nblocks);
+  check_direct_address_uniqueness(dip, sb->ninodes, sb->nblocks,addr);
+  check_indirect_address_uniqueness(dip, sb->ninodes, sb->nblocks, addr);
   check_inode_referred_in_directory(dip, sb->ninodes, sb->nblocks, addr);
   check_inode_referred_in_directory_marked_in_use(dip, sb->ninodes, sb->nblocks, addr);
   check_reference_count_for_files(dip, sb->ninodes, sb->nblocks, addr);
