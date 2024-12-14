@@ -25,28 +25,41 @@ void check_inode_types(struct dinode *dip, int ninodes) {
   // printf("inode type check OK!\n");
 }
 
-void check_block_addresses(struct dinode *dip, int ninodes, int nblocks) {
-  int i, j;
-  for ( i = 0; i < ninodes; i++) {
-      if (dip[i].type == 0) {
-          continue; // Skip unallocated inodes
-      }
-      
-      // Check direct block addresses
-      for ( j = 0; j < NDIRECT; j++) {
-          if (dip[i].addrs[j] != 0 && (dip[i].addrs[j] < 0 || dip[i].addrs[j] >= nblocks)) {
-              fprintf(stderr, "ERROR: bad direct address in inode.\n");
-              exit(1);
-          }
-      }
-      
-      // Check indirect block address
-      if (dip[i].addrs[NDIRECT] != 0 && (dip[i].addrs[NDIRECT] < 0 || dip[i].addrs[NDIRECT] >= nblocks)) {
-          fprintf(stderr, "ERROR: bad indirect address in inode.\n");
-          exit(1);
-      }
-  }
-  // printf("check_block_addresses OK!\n");
+void check_block_addresses(struct dinode *dip, int ninodes, int nblocks, char *addr) {
+    int i, inum;
+    for ( inum = 1; inum < ninodes; inum++) {
+        struct dinode *inode = &dip[inum];
+        if (inode->type == 0) continue;
+
+        // Check direct block addresses
+        for ( i = 0; i < NDIRECT; i++) {
+            uint blockaddr = inode->addrs[i];
+            if (blockaddr == 0) continue;
+            if (blockaddr < 0 || blockaddr >= nblocks) {
+                fprintf(stderr, "ERROR: bad direct address in inode.\n");
+                exit(1);
+            }
+        }
+
+        // Check indirect block addresses
+        uint blockaddr = inode->addrs[NDIRECT];
+        if (blockaddr != 0) {
+            if (blockaddr < 0 || blockaddr >= nblocks) {
+                fprintf(stderr, "ERROR: bad indirect address in inode.\n");
+                exit(1);
+            }
+
+            uint *indirectblk = (uint *)(addr + blockaddr * BLOCK_SIZE);
+            for ( i = 0; i < NINDIRECT; i++, indirectblk++) {
+                blockaddr = *indirectblk;
+                if (blockaddr == 0) continue;
+                if (blockaddr < 0 || blockaddr >= nblocks) {
+                    fprintf(stderr, "ERROR: bad indirect address in inode.\n");
+                    exit(1);
+                }
+            }
+        }
+    }
 }
 
 void check_root_directory(struct dinode *dip, struct dirent *de) {
@@ -529,19 +542,14 @@ main(int argc, char *argv[])
 //   // read root inode
 //   printf("Root inode  size %d links %d type %d \n", dip[ROOTINO].size, dip[ROOTINO].nlink, dip[ROOTINO].type);
 
-  // get the address of root dir 
   de = (struct dirent *) (addr + (dip[ROOTINO].addrs[0])*BLOCK_SIZE);
 
-  // print the entries in the first block of root dir 
 
   n = dip[ROOTINO].size/sizeof(struct dirent);
-//   for (i = 0; i < n; i++,de++){
-//  	printf(" inum %d, name %s ", de->inum, de->name);
-//   	printf("inode  size %d links %d type %d \n", dip[de->inum].size, dip[de->inum].nlink, dip[de->inum].type);
-//   }
+
 
   check_inode_types(dip, sb->ninodes);
-  check_block_addresses(dip, sb->ninodes, sb->nblocks);
+  check_block_addresses(dip, sb->ninodes, sb->nblocks, addr);
   check_root_directory(dip, (struct dirent *)(addr + (dip[ROOTINO].addrs[0])*BLOCK_SIZE));
   check_directory_format(dip, sb->ninodes, addr);
   check_block_usage_in_bitmap(dip, addr + BBLOCK(0, sb->ninodes) * BLOCK_SIZE, sb->ninodes, sb->nblocks, addr);
